@@ -6,9 +6,10 @@
 
 //This is the configuration file, main structure in _main.ino
 //CONFIGURATION SETTINGS:
-#define COMMUNICATION COMM_SERIAL //Which communication to use. Options are: COMM_SERIAL (usb), COMM_BTSERIAL (bluetooth), COMM_WIFISERIAL (wifi)
+#define COMMUNICATION COMM_BTSERIAL //Which communication to use. Options are: COMM_SERIAL (usb), COMM_BTSERIAL (bluetooth), COMM_WIFISERIAL (wifi)
 //serial over USB
   #define SERIAL_BAUD_RATE 115200
+  #define SURGY_USB_TELEMETRY true //Mirror complete Bluetooth telemetry frames to USB for the QNX monitor
   
 //serial over Bluetooth
   #define BTSERIAL_DEVICE_NAME "lucidgloves-left"

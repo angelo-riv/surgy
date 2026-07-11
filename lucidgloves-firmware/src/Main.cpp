@@ -140,7 +140,9 @@ void Main::loop() {
            DecodedData recievedData = encoding->decodeData(received);
            haptics.writeServoHaptics(recievedData.servoValues); 
            if (recievedData.fields.specialCommandReceived){
-            Serial.println("Special command recieved!!!");
+            #if BT_ECHO && !SURGY_USB_TELEMETRY
+             Serial.println("Special command recieved!!!");
+            #endif
               if (recievedData.command == "ClearData")
                 input.clearFlags();
               #if FLEXION_MIXING == MIXING_SINCOS

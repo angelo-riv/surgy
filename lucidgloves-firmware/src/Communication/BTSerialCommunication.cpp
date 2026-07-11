@@ -12,8 +12,10 @@ bool BTSerialCommunication::isOpen() {
 
 void BTSerialCommunication::start() {
     m_SerialBT.begin(BTSERIAL_DEVICE_NAME);
-    #if BT_ECHO
+    #if SURGY_USB_TELEMETRY || BT_ECHO
     Serial.begin(SERIAL_BAUD_RATE);
+    #endif
+    #if BT_ECHO && !SURGY_USB_TELEMETRY
     Serial.println("The device started, now you can pair it with bluetooth!");
     #endif
     m_isOpen = true;
@@ -21,7 +23,11 @@ void BTSerialCommunication::start() {
 
 void BTSerialCommunication::output(char* data) {
     m_SerialBT.print(data);
-    #if BT_ECHO
+    #if SURGY_USB_TELEMETRY
+    // SurgY: mirror the same complete Alpha frame to QNX over USB.
+    Serial.print(data);
+    Serial.flush();
+    #elif BT_ECHO
     Serial.print(data);
     Serial.flush();
     #endif
