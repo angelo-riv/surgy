@@ -1,73 +1,90 @@
-#include <iomanip>
+#include <cmath>
 #include <iostream>
 #include <string>
 
-#include "feature_window.h"
-#include "serial_reader.h"
+#include "monitor.h"
 
 namespace {
 void usage(const char* program) {
     std::cerr << "Usage: " << program
-              << " --left-file FILE --right-file FILE\n"
-              << "       " << program << " --fake\n";
+              << " --left DEVICE --right DEVICE [options]\n"
+              << "       " << program
+              << " --left-file FILE --right-file FILE [options]\n"
+              << "       " << program << " --fake [options]\n"
+              << "Options:\n"
+              << "  --left-baseline CSV --right-baseline CSV\n"
+              << "  --record-left-baseline CSV --record-right-baseline CSV\n"
+              << "  --threshold NUMBER  (default 0.5)\n"
+              << "  --k NUMBER          (default 5)\n"
+              << "  --offline-timeout-ms NUMBER (default 1000)\n";
 }
 
-bool runHand(const char* name, const std::string& path) {
-    GloveFrame latest;
-    FeatureWindow window;
-    FrameStreamReader reader([&latest, &window](const GloveFrame& frame) {
-        latest = frame;
-        window.add(frame);
-    });
-    std::string error;
-    if (!readFileFrames(path, reader, error)) {
-        std::cerr << error << '\n';
-        return false;
-    }
-    const ReaderCounters& counts = reader.counters();
-    std::cout << name << ": frames=" << counts.frames
-              << " parse_errors=" << counts.parse_errors;
-    if (counts.frames > 0) {
-        std::cout << std::fixed << std::setprecision(3)
-                  << " latest=[" << latest.thumb << ", " << latest.index
-                  << ", " << latest.middle << ", " << latest.ring << ", "
-                  << latest.pinky << ']';
-    }
-    if (window.ready()) {
-        const FeatureVector features = window.features();
-        std::cout << " mean_thumb=" << features[0]
-                  << " movement_thumb=" << features[5]
-                  << " variability_thumb=" << features[10];
-    } else {
-        std::cout << " feature_window=" << window.size() << '/'
-                  << kDefaultWindowSize;
-    }
-    std::cout << '\n';
-    return true;
+bool parseSize(const std::string& text, std::size_t& value) {
+    try {
+        std::size_t consumed = 0;
+        const unsigned long parsed = std::stoul(text, &consumed);
+        if (consumed != text.size() || parsed == 0) return false;
+        value = static_cast<std::size_t>(parsed);
+        return true;
+    } catch (const std::exception&) { return false; }
+}
+
+bool parseNumber(const std::string& text, double& value) {
+    try {
+        std::size_t consumed = 0;
+        value = std::stod(text, &consumed);
+        return consumed == text.size() && std::isfinite(value) && value >= 0.0;
+    } catch (const std::exception&) { return false; }
 }
 }  // namespace
 
 int main(int argc, char** argv) {
-    std::string left;
-    std::string right;
-    if (argc == 2 && std::string(argv[1]) == "--fake") {
-        left = "data/left_normal.txt";
-        right = "data/right_mixed.txt";
-    } else {
-        for (int i = 1; i < argc; ++i) {
-            const std::string option = argv[i];
-            if ((option == "--left-file" || option == "--right-file") &&
-                i + 1 < argc) {
-                (option == "--left-file" ? left : right) = argv[++i];
-            } else {
-                usage(argv[0]);
-                return 2;
-            }
-        }
+    MonitorOptions options;
+    options.left.name = "LEFT";
+    options.right.name = "RIGHT";
+    bool fake = false;
+    for (int i = 1; i < argc; ++i) {
+        const std::string option = argv[i];
+        if (option == "--fake") { fake = true; continue; }
+        if (i + 1 >= argc) { usage(argv[0]); return 2; }
+        const std::string value = argv[++i];
+        if (option == "--left") {
+            options.left.input = {value, true};
+        } else if (option == "--right") {
+            options.right.input = {value, true};
+        } else if (option == "--left-file") {
+            options.left.input = {value, false};
+        } else if (option == "--right-file") {
+            options.right.input = {value, false};
+        } else if (option == "--left-baseline") {
+            options.left.baseline_path = value;
+        } else if (option == "--right-baseline") {
+            options.right.baseline_path = value;
+        } else if (option == "--record-left-baseline") {
+            options.left.record_path = value;
+        } else if (option == "--record-right-baseline") {
+            options.right.record_path = value;
+        } else if (option == "--k") {
+            if (!parseSize(value, options.k)) { std::cerr << "invalid --k\n"; return 2; }
+        } else if (option == "--threshold") {
+            if (!parseNumber(value, options.threshold)) { std::cerr << "invalid --threshold\n"; return 2; }
+        } else if (option == "--offline-timeout-ms") {
+            std::size_t milliseconds = 0;
+            if (!parseSize(value, milliseconds)) { std::cerr << "invalid offline timeout\n"; return 2; }
+            options.offline_timeout_ns = milliseconds * 1000000ULL;
+        } else { usage(argv[0]); return 2; }
     }
-    if (left.empty() || right.empty()) {
-        usage(argv[0]);
+    if (fake) {
+        if (options.left.input.path.empty()) options.left.input = {"data/left_normal.txt", false};
+        if (options.right.input.path.empty()) options.right.input = {"data/right_mixed.txt", false};
+    }
+    if (options.left.input.path.empty() || options.right.input.path.empty()) {
+        usage(argv[0]); return 2;
+    }
+    if ((!options.left.baseline_path.empty() && !options.left.record_path.empty()) ||
+        (!options.right.baseline_path.empty() && !options.right.record_path.empty())) {
+        std::cerr << "cannot load and record a baseline for the same hand\n";
         return 2;
     }
-    return runHand("LEFT", left) && runHand("RIGHT", right) ? 0 : 1;
+    return runMonitor(options);
 }
